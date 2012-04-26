@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Messages and IPC in Node</title>
+  <meta name="viewport" content="width=1024, user-scalable=no">
+  <link href='http://fonts.googleapis.com/css?family=Lato:regular,regularitalic,900' rel='stylesheet' type='text/css'>
+  <link rel="stylesheet" href="deck/core/deck.core.css" type="text/css">
+  <link rel="stylesheet" href="deck/extensions/codemirror/deck.codemirror.css">
+  <link rel="stylesheet" href="assets/style.css" type="text/css">
+  <script src="deck/modernizr.custom.js"></script>
+</head>
+<body class="deck-container">
+
+
+<section class="slide" id="title">
+  <h2 class="title">Dane Springmeyer</h2>
+  <div class="topright" style="background:url(assets/github-twitter.png) no-repeat; padding:16px 16px 16px 138px;">@springmeyer</div>
+  <div>
+      <h1 class="title">
+          Basics of <strong>message passing</strong> in <strong>Node.js</strong>
+      </h1>
+  </div>
+  <div class="bottom">
+      NodeDC, April 25th  
+  </div>
+</section>
+
+<section class="slide vertical-center" id="goals">
+  <div>
+    <h2>Goals</h2>
+    <ul class="right">
+      <li class="slide">
+        Understand tools for IPC (inter-process communication)
+      </li>
+      <li class="slide">
+        Build awareness of high perf designs for cpu-bound apps
+      </li>
+      <li class="slide">
+        Hint at advanced, emerging topics around multi-core Node
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide vertical-center" id="overview">
+  <div>
+    <h2>Topics</h2>
+    <ul class="right">
+      <li class="slide">
+        signals
+      </li>
+      <li class="slide">
+        udp / tcp / http
+      </li>
+      <li class="slide">
+        child_process: fork,send
+      </li>
+      <li class="slide">
+        cluster / compute-cluster
+      </li>
+      <!--
+      <li class="slide">
+        message queues
+      </li>
+      -->
+    </ul>
+  </div>
+</section>
+
+
+<!-- *********** SIGNALS ************** -->
+
+<section class="slide vertical-center" id="signals">
+  <div>
+    <h2>Signals</h2>
+    <ul class="right">
+      <li class="slide">
+        man signal (e.g. SIGHUP, SIGINT, SIGURG, etc...)
+      </li>
+      <li class="slide">
+        #include &lt;signal.h&gt;
+      </li>
+      <li class="slide">
+        Allow the manipulation of a process from outside its domain
+      </li>
+      <li class="slide">
+        Allow the process to manipulate itself or copies of itself (children)
+      </li>
+      <li class="slide">
+        addressed using PID (process id)
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide" id="signal-server">
+  <h2>Signals</h2>
+  <div class="filename">server.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  process.on('SIGTERM', function() {
+     console.log('Got a SIGTERM, exiting...');
+     process.exit(1);
+  });
+  
+  console.log('server running with PID:', process.pid);
+  process.kill(process.pid,'SIGTERM');
+</textarea>
+</section>
+
+<section class="slide" id="signal-demo">
+  <h2>Signals</h2>
+  <pre>
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="signal-step-1"><strong>node server.js</strong><span class="cursor"> </span></span></span><span class="slide" id="signal-step-2">
+server running with PID: 1905
+Got a SIGTERM, exiting...
+</span>
+</span>
+</pre>
+</section>
+
+
+<!-- *********** UDP ************** -->
+
+<section class="slide vertical-center" id="udp">
+  <div>
+    <h2>UDP: Internet User Datagram Protocol</h2>
+    <ul class="right">
+      <li class="slide">
+        man udp
+      </li>
+      <li class="slide">
+        #include &lt;sys/socket.h&gt;
+      </li>
+      <li class="slide">
+        simple, unreliable, connectionless
+      </li>
+      <li class="slide">
+        low overhead, fast
+      </li>
+      <li class="slide">
+        same `ip-addr:port` format as TCP/HTTP
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide" id="udp-server">
+  <h2>UDP / Datagram Sockets</h2>
+  <div class="filename">server.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var dgram = require("dgram");
+  
+  var server = dgram.createSocket("udp4");
+  server.on("message", function (msg, rinfo) {
+    console.log("server got msg: '" + msg + "'");
+  });
+  server.on("listening", function () {
+    console.log("listening on port " + server.address().port);
+  });
+  server.bind(900913);
+  </textarea>
+</section>
+
+<section class="slide" id="udp-client">
+  <h2>UDP / Datagram Sockets</h2>
+  <div class="filename">client.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var dgram = require('dgram');
+  
+  var message = new Buffer("a datagram for you");
+  var client = dgram.createSocket("udp4");
+  client.send(message, 0, message.length, 900913, "localhost", function(err, bytes) {
+    client.close();
+  });
+  </textarea>
+</section>
+
+<section class="slide" id="udp-demo">
+  <h2>UDP / Datagram Sockets</h2>
+  <pre>
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="udp-step-1"><strong>node server.js & node client.js</strong><span class="cursor"> </span></span></span><span class="slide" id="udp-step-2">
+[2] 1148
+listening on port 48945
+</span><span class="slide" id="udp-step-3">server got msg: 'a datagram for you'</span>
+<span class="slide" id="udp-step-4">
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="udp-step-5"><strong>killall node</strong></span></span>
+<span class="slide" id="udp-step-6">
+[1]-  Exit 1                  node server.js
+</span>
+</span>
+</pre>
+</section>
+
+
+<!-- *********** TCP ************** -->
+
+<section class="slide vertical-center" id="tcp">
+  <div>
+    <h2>TCP: Internet User Datagram Protocol</h2>
+    <ul class="right">
+      <li class="slide">
+        man tcp
+      </li>
+      <li class="slide">
+        builds non-blocking connection support upon sockets
+      </li>
+      <li class="slide">
+        reliable, flow-controlled, two-way transmission
+     of data
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide" id="tcp-server">
+  <h2>TCP Sockets</h2>
+  <div class="filename">server.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var net = require('net');
+  
+  var server = net.createServer(function(socket) {
+    console.log('server connected with client on port ' + server.address().port);
+    socket.write('server sends a tcp message for you\r\n');
+    socket.pipe(socket);
+  });
+  server.listen(8080);
+  </textarea>
+</section>
+
+<section class="slide" id="tcp-client">
+  <h2>TCP Sockets</h2>
+  <div class="filename">client.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var net = require('net');
+  
+  var client = net.connect(8080);
+  client.on('data', function(data) {
+    console.log(data.toString());
+    client.end();
+  });
+  </textarea>
+</section>
+
+<section class="slide" id="tcp-demo">
+  <h2>TCP Sockets</h2>
+  <pre>
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="tcp-step-1"><strong>node server.js & node client.js</strong><span class="cursor"> </span></span></span><span class="slide" id="tcp-step-2">
+[1] 1764
+server connected with client on port 8080
+server sends a tcp message for you
+</span>
+<span class="slide" id="tcp-step-3">
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="tcp-step-4"><strong>killall node</strong></span></span>
+<span class="slide" id="tcp-step-5">
+[1]-  Exit 1                  node server.js
+</span>
+</span>
+</pre>
+</section>
+
+
+<!-- *********** Child Process ************** -->
+
+<section class="slide vertical-center" id="child">
+  <div>
+    <h2>Child Process</h2>
+    <ul class="right">
+      <li class="slide">
+        Advanced means for asynchronously controlling subprocesses
+      </li>
+      <li class="slide">
+        Combines os.fork with tcp communication and pipes to simplify streaming message passing
+      </li>
+      <li class="slide">
+        Supports IPC through both signals (child.kill(signal) and bi-directional messages (child.send(message, [sendHandle]))
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide" id="child-process">
+  <h2>Child Process</h2>
+  <div class="filename">child.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  console.log('child was created with PID: ' + process.pid);
+  
+  process.on('exit', function(code,signal) {
+      console.warn('child is exiting with code: '+ code +' and signal: '+signal)
+  });
+  
+  process.on('message', function(data) {
+      console.log('child: got message from parent: ' + data);
+      process.send('hi, thanks for the message!');
+  });
+</textarea>
+</section>
+
+<section class="slide" id="child-spawn">
+  <h2>Child Process - Spawn</h2>
+  <div class="filename">parent-spawn.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var spawn = require('child_process').spawn;
+  
+  function format(type, output) {
+    console.log('child says (' + type + '): ' + output);
+  }
+  
+  var child = spawn('node',['child.js']);
+  child.stdout.on('data', format.bind(global,'stdout'));
+  child.stderr.on('data', format.bind(global,'stderr'));
+</textarea>
+</section>
+
+<section class="slide" id="child-spawn-demo">
+  <h2>Child Process - Spawn</h2>
+  <pre>
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="child-step-1"><strong>node parent-spawn.js</strong><span class="cursor"> </span></span></span><span class="slide" id="child-step-2">
+child says (stdout): child was created with PID: 1084
+child says (stderr): child is exiting with code: undefined and signal: undefined
+</span>
+</span>
+</pre>
+</section>
+
+<section class="slide" id="child-fork">
+  <h2>Child Process - Fork</h2>
+  <div class="filename">parent-fork.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var fork = require('child_process').fork;
+  
+  var child = fork(__dirname + '/child.js');
+  
+  child.on('message', function(data) {
+      console.log('parent: got message from child: ' + data);
+  });
+  
+  child.send('hello from your parent');
+</textarea>
+</section>
+
+
+<section class="slide" id="child-fork-demo">
+  <h2>Child Process - Fork</h2>
+  <pre>
+<span class="black">$ <span class="cursor"> </span><span class="slide" id="child-step-1"><strong>node parent-fork.js</strong><span class="cursor"> </span></span></span><span class="slide" id="child-step-2">
+child was created with PID: 1089
+child: got message from parent: hello from your parent
+parent: got message from child: hi, thanks for the message!
+</span>
+</span>
+</pre>
+</section>
+
+
+<!-- *********** Cluster ************** -->
+
+<section class="slide vertical-center" id="cluster">
+  <div>
+    <h2>Cluster</h2>
+    <ul class="right">
+      <li class="slide">
+        Easily create a network of processes that all share server ports
+      </li>
+      <li class="slide">
+        Made possible because `child_process` module rocks
+      </li>
+    </ul>
+  </div>
+</section>
+
+
+<section class="slide" id="cluster-example">
+  <h2>Child Process - Fork</h2>
+  <div class="filename">multi-core-server.js</div>
+  <textarea id="code" name="code" class="code" mode="javascript">
+  var cluster = require('cluster');
+  var http = require('http');
+
+  if (cluster.isMaster) {
+    for (var i = 0; i &lt; require('os').cpus().length; i++) {
+      cluster.fork();
+    }
+  } else {
+    // Workers can share any TCP connection, in this case HTTP
+    http.createServer(function(req, res) {
+      res.writeHead(200);
+      res.end("hello world\n");
+    }).listen(8000);
+  }
+</textarea>
+</div>
+</section>
+
+
+<!-- *********** compute-cluster ************** -->
+
+<section class="slide vertical-center" id="ccluster">
+  <div>
+    <h2>It gets better: Lloyd's "compute-cluster"</h2>
+    <ul class="right">
+      <li class="slide">
+        "Fully load" Node if you have lots of cores
+      </li>
+      <li class="slide">
+        github.com/lloyd/compute-cluster
+      </li>
+      <li class="slide">
+        github.com/lloyd/fully_loaded_node
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide" id="ccluster-example">
+  <h2>Compute Cluster</h2>
+  <textarea id="code" name="code" class="code" mode="javascript">
+    var cc = new ccluster({
+      module: __dirname + "/bcrypt-compute.js",
+      max_backlog: 100000,
+      max_request_time: 2.0,
+      max_processes: os.cpus().length * 2
+    });
+    
+    var workComplete = 0;
+    function doOneWorks(cb) {
+      cc.enqueue({}, function(err) {
+        if (!err) workComplete++;
+        cb(err);
+      });
+    }
+</textarea>
+</div>
+</section>
+
+<section class="slide vertical-center" id="ccluster-live-demo">
+  <div>
+    <h2>Demo! Lloyd's "Fully Loaded Node"</h2>
+    <h3>Demo! Lloyd's "Fully Loaded Node"</h3>
+    <h3><a href="http://localhost:3000">github.com/lloyd/fully_loaded_node</a></h3>
+  </div>
+</section>
+
+<script src="deck/core/jquery-1.6.4.min.js"></script>
+<script src="deck/core/deck.core.js"></script>
+<script src="deck/extensions/goto/deck.goto.js"></script>
+<script src="deck/extensions/navigation/deck.navigation.js"></script>
+<script src="deck/extensions/status/deck.status.js"></script>
+<script src="deck/extensions/hash/deck.hash.js"></script>
+
+<script src="deck/extensions/codemirror/codemirror.js"></script>
+<script src="deck/extensions/codemirror/mode/javascript/javascript.js"></script>
+<script src="deck/extensions/codemirror/mode/clike/clike.js"></script>
+<script src="deck/extensions/codemirror/mode/python/python.js"></script>
+<script src="deck/extensions/codemirror/deck.codemirror.js"></script>
+<script>
+$(function() {
+  $.extend(true, $.deck.defaults, {
+    codemirror: {
+      theme: 'kkaefer'
+    }
+  });
+  $.deck('.slide');
+});
+</script>
+</body>
+</html>
