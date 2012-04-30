@@ -7,4 +7,4 @@ server.on("message", function (msg, rinfo) {
 server.on("listening", function () {
   console.log("listening on port " + server.address().port);
 });
-server.bind(900913);
+server.bind(41234);
